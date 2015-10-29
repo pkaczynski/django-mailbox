@@ -150,7 +150,19 @@ class Mailbox(models.Model):
 
     @property
     def _protocol_info(self):
-        return urlparse(self.uri)
+        result = urlparse(self.uri)
+        if sys.version_info < (2, 7, 4) and result.scheme == 'imap+ssl':
+            from urlparse import ParseResult
+            result = urlparse(self.uri.replace('+ssl', ''))
+            result = ParseResult(
+                scheme='imap+ssl',
+                netloc=result.netloc, 
+                path=result.path, 
+                params=result.params, 
+                query=result.query, 
+                fragment=result.fragment
+            )
+        return result
 
     @property
     def _query_string(self):
@@ -261,7 +273,7 @@ class Mailbox(models.Model):
         msg.save()
 
         message_received.send(sender=self, message=msg)
-        
+
         return msg
 
     def record_outgoing_message(self, message):
@@ -736,7 +748,10 @@ class MessageAttachment(models.Model):
         if headers is None:
             return EmailMessage()
         if sys.version_info < (3, 0):
-            headers = headers.encode('utf-8')
+            try:
+                headers = headers.encode('utf-8')
+            except UnicodeDecodeError:
+                headers = unicode(headers, 'utf-8').encode('utf-8')
         return email.message_from_string(headers)
 
     def _set_dehydrated_headers(self, email_object):
